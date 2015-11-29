@@ -1,0 +1,8 @@
+[package]
+name = "multiaddr"
+version = "0.1.0"
+authors = ["Nick Hamann <nick@wabbo.org>"]
+
+[dependencies]
+rust-base58 = "*"
+varint = "0.9"
