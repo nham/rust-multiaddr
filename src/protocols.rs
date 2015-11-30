@@ -2,6 +2,7 @@ use std::fmt;
 
 use self::ProtocolType::*;
 
+#[derive(Copy, Clone)]
 pub enum ProtocolType {
     IP4 = 4,
     TCP = 6,
@@ -42,6 +43,25 @@ impl ProtocolType {
         }
     }
 
+    // bad duplication. not sure how to fix
+    pub fn from_code(c: u32) -> Result<ProtocolType, String> {
+        match c {
+            4   => Ok(IP4),
+            6   => Ok(TCP),
+            17  => Ok(UDP),
+            33  => Ok(DCCP),
+            41  => Ok(IP6),
+            132 => Ok(SCTP),
+            301 => Ok(UTP),
+            302 => Ok(UDT),
+            421 => Ok(IPFS),
+            480 => Ok(HTTP),
+            443 => Ok(HTTPS),
+            444 => Ok(ONION),
+            _ => Err(format!("Protocol code '{}' not recognized", c))
+        }
+    }
+
     fn to_str(&self) -> &'static str {
         match *self {
             IP4 => "ip4",
@@ -59,21 +79,25 @@ impl ProtocolType {
         }
     }
 
-    fn size(&self) -> ProtocolSize {
+    pub fn size(&self) -> ProtocolSize {
         match *self {
-            IP4 => ProtocolSize::Fixed(32),
-            TCP => ProtocolSize::Fixed(16),
-            UDP => ProtocolSize::Fixed(16),
-            DCCP => ProtocolSize::Fixed(16),
-            IP6 => ProtocolSize::Fixed(128),
-            SCTP => ProtocolSize::Fixed(16),
+            IP4 => ProtocolSize::Fixed(4),
+            TCP => ProtocolSize::Fixed(2),
+            UDP => ProtocolSize::Fixed(2),
+            DCCP => ProtocolSize::Fixed(2),
+            IP6 => ProtocolSize::Fixed(16),
+            SCTP => ProtocolSize::Fixed(2),
             UTP => ProtocolSize::Fixed(0),
             UDT => ProtocolSize::Fixed(0),
             IPFS => ProtocolSize::Variable,
             HTTP => ProtocolSize::Fixed(0),
             HTTPS => ProtocolSize::Fixed(0),
-            ONION => ProtocolSize::Fixed(80),
+            ONION => ProtocolSize::Fixed(10),
         }
+    }
+
+    pub fn code(&self) -> u32 {
+        *self as u32
     }
 }
 

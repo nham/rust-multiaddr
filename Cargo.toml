@@ -5,4 +5,4 @@ authors = ["Nick Hamann <nick@wabbo.org>"]
 
 [dependencies]
 rust-base58 = "*"
-varint = "0.9"
+varint = { git = "https://github.com/nham/Varint-rs.git", branch = "add_impl" }
