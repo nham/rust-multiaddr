@@ -1,7 +1,7 @@
-extern crate rust_base58;
+extern crate rust_multihash;
 extern crate varint;
 
-use rust_base58::FromBase58;
+use rust_multihash::Multihash;
 use std::io::{Cursor, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
@@ -13,7 +13,9 @@ use protocols::ProtocolType::*;
 mod protocols;
 
 #[derive(Debug)]
-pub struct Multiaddr(Vec<u8>);
+pub struct Multiaddr {
+    bytes: Vec<u8>
+}
 
 pub type ParseError = String;
 
@@ -49,16 +51,15 @@ impl Multiaddr {
             segs = &segs[1..];
         }
 
-        Ok(Multiaddr(ma.into_inner()))
+        Ok(Multiaddr { bytes: ma.into_inner() })
     }
 
     pub fn from_bytes(b: Vec<u8>) -> Result<Multiaddr, ParseError> {
         try!(verify_multiaddr_bytes(&b[..]));
-        Ok(Multiaddr(b))
+        Ok(Multiaddr { bytes: b })
     }
 
-    pub fn as_slice(&self) -> &[u8] { &self.0[..] }
-    fn into_vec(self) -> Vec<u8> { self.0 }
+    pub fn as_bytes(&self) -> &[u8] { &self.bytes[..] }
 }
 
 fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseError> {
@@ -86,17 +87,14 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
             }
         }
         IPFS => {
-            match s.from_base58() {
-                Err(e) => Err(format!("{}", e)),
-                Ok(mut bytes) => {
-                    let mut cursor = Cursor::new(v);
-                    try!(cursor.write_unsigned_varint_32(bytes.len() as u32)
-                               .map_err(|e| format!("Error: {}", e)));
-                    let mut v = cursor.into_inner();
-                    v.append(&mut bytes);
-                    Ok(v)
-                }
-            }
+            // verify string is a valid Multihash and convert it to bytes
+            let mut bytes = try!(Multihash::from_base58_str(s)).into_bytes();
+            let mut cursor = Cursor::new(v);
+            try!(cursor.write_unsigned_varint_32(bytes.len() as u32)
+                       .map_err(|e| format!("Error: {}", e)));
+            let mut v = cursor.into_inner();
+            v.append(&mut bytes);
+            Ok(v)
         }
         TCP | UDP | SCTP | DCCP => {
             match s.parse::<u16>() {
