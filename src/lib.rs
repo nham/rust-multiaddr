@@ -16,7 +16,7 @@ mod protocols;
 
 #[derive(Debug)]
 pub struct Multiaddr {
-    bytes: Vec<u8>
+    bytes: Vec<u8>,
 }
 
 pub enum ParseError {
@@ -36,7 +36,9 @@ impl Multiaddr {
         Ok(Multiaddr { bytes: b })
     }
 
-    pub fn as_bytes(&self) -> &[u8] { &self.bytes[..] }
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..]
+    }
 }
 
 fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
@@ -57,17 +59,18 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
 
         segs = &segs[1..];
 
-        if let ProtocolSize::Fixed(0) = p.size { continue }
+        if let ProtocolSize::Fixed(0) = p.size {
+            continue;
+        }
 
         // If we're still here, we are expecting an address.
         if segs.len() == 0 {
-            return Err(ParseError::InvalidAddress(format!(
-                "Address not found for protocol {}",
-                p.ty)));
+            return Err(ParseError::InvalidAddress(format!("Address not found for protocol {}",
+                                                          p.ty)));
         }
 
         let bytes = try!(address_string_to_bytes(segs[0], &p)
-                            .map_err(|e| ParseError::InvalidAddress(e)));
+                             .map_err(|e| ParseError::InvalidAddress(e)));
         // I don't think these can fail?
         ma.write_unsigned_varint_32(p.ty.code()).unwrap();
         ma.write_all(&bytes[..]).unwrap();
@@ -97,7 +100,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String>
                     // this seems ugly but I don't know how to do it better
                     for &seg in ip.segments().iter() {
                         try!(v.write_u16::<BigEndian>(seg)
-                             .map_err(|e| format!("Error writing ip6 bytes: {}", e)));
+                              .map_err(|e| format!("Error writing ip6 bytes: {}", e)));
                     }
                     Ok(v)
                 }
@@ -122,9 +125,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String>
                 }
             }
         }
-        ONION => {
-            unimplemented!()
-        }
+        ONION => unimplemented!(),
 
         // this function should not be called on the other protocols because they have no
         // address to parse
@@ -133,28 +134,26 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String>
 }
 
 fn verify_multiaddr_bytes(mut bytes: &[u8]) -> Result<(), ParseError> {
-    /*
-     * while not end of input:
-     *   read varint (protocol type code)
-     *   if fixed-length, read that number of bytes
-     *   if variable length, read varint and then that number of bytes.
-     */
+    // while not end of input:
+    //   read varint (protocol type code)
+    //   if fixed-length, read that number of bytes
+    //   if variable length, read varint and then that number of bytes.
+    //
     while bytes.len() > 0 {
         let code = try!(bytes.read_unsigned_varint_32().map_err(|e| {
-            ParseError::InvalidCode(format!("Error reading varint: {}",
-                                            e))
+            ParseError::InvalidCode(format!("Error reading varint: {}", e))
         }));
         let proto_type = try!(ProtocolType::from_code(code).map_err(|_| {
-            ParseError::InvalidCode(format!("Invalid protocol type code: {}",
-                                            code))
+            ParseError::InvalidCode(format!("Invalid protocol type code: {}", code))
         }));
         let addr_size = match proto_type.size() {
             ProtocolSize::Fixed(0) => continue,
             ProtocolSize::Fixed(n) => n,
-            ProtocolSize::Variable => try!(bytes.read_unsigned_varint_32().map_err(|e| {
-                ParseError::InvalidAddress(format!("Error reading varint: {}",
-                                                   e))
-            })),
+            ProtocolSize::Variable => {
+                try!(bytes.read_unsigned_varint_32().map_err(|e| {
+                    ParseError::InvalidAddress(format!("Error reading varint: {}", e))
+                }))
+            }
         };
 
         if bytes.len() < addr_size as usize {
@@ -178,35 +177,32 @@ mod test {
     #[test]
     fn test_fail_construct() {
         // Cases taken from go-multiaddr tests
-        let cases = [
-            "/ip4",
-            "/ip4",
-            "/ip4/::1",
-            "/ip4/fdpsofodsajfdoisa",
-            "/ip6",
-            "/udp",
-            "/tcp",
-            "/sctp",
-            "/udp/65536",
-            "/tcp/65536",
-            /*
-            "/onion/9imaq4ygg2iegci7:80",
-            "/onion/aaimaq4ygg2iegci7:80",
-            "/onion/timaq4ygg2iegci7:0",
-            "/onion/timaq4ygg2iegci7:-1",
-            "/onion/timaq4ygg2iegci7",
-            "/onion/timaq4ygg2iegci@:666",
-            */
-            "/udp/1234/sctp",
-            "/udp/1234/udt/1234",
-            "/udp/1234/utp/1234",
-            "/ip4/127.0.0.1/udp/jfodsajfidosajfoidsa",
-            "/ip4/127.0.0.1/udp",
-            "/ip4/127.0.0.1/tcp/jfodsajfidosajfoidsa",
-            "/ip4/127.0.0.1/tcp",
-            "/ip4/127.0.0.1/ipfs",
-            "/ip4/127.0.0.1/ipfs/tcp"
-        ];
+        let cases = ["/ip4",
+                     "/ip4",
+                     "/ip4/::1",
+                     "/ip4/fdpsofodsajfdoisa",
+                     "/ip6",
+                     "/udp",
+                     "/tcp",
+                     "/sctp",
+                     "/udp/65536",
+                     "/tcp/65536",
+                     // "/onion/9imaq4ygg2iegci7:80",
+                     // "/onion/aaimaq4ygg2iegci7:80",
+                     // "/onion/timaq4ygg2iegci7:0",
+                     // "/onion/timaq4ygg2iegci7:-1",
+                     // "/onion/timaq4ygg2iegci7",
+                     // "/onion/timaq4ygg2iegci@:666",
+                     //
+                     "/udp/1234/sctp",
+                     "/udp/1234/udt/1234",
+                     "/udp/1234/utp/1234",
+                     "/ip4/127.0.0.1/udp/jfodsajfidosajfoidsa",
+                     "/ip4/127.0.0.1/udp",
+                     "/ip4/127.0.0.1/tcp/jfodsajfidosajfoidsa",
+                     "/ip4/127.0.0.1/tcp",
+                     "/ip4/127.0.0.1/ipfs",
+                     "/ip4/127.0.0.1/ipfs/tcp"];
 
         for case in &cases {
             assert!(Multiaddr::from_string(case).is_err());
@@ -216,35 +212,33 @@ mod test {
     #[test]
     fn test_succeed_construct() {
         // Cases taken from go-multiaddr tests
-        let cases = [
-            "/ip4/1.2.3.4",
-            "/ip4/0.0.0.0",
-            "/ip6/::1",
-            "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21",
-            //"/onion/timaq4ygg2iegci7:1234"),
-            //"/onion/timaq4ygg2iegci7:80/http"),
-            "/udp/0",
-            "/tcp/0",
-            "/sctp/0",
-            "/udp/1234",
-            "/tcp/1234",
-            "/sctp/1234",
-            "/udp/65535",
-            "/tcp/65535",
-            "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
-            "/udp/1234/sctp/1234",
-            "/udp/1234/udt",
-            "/udp/1234/utp",
-            "/tcp/1234/http",
-            "/tcp/1234/https",
-            "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234",
-            "/ip4/127.0.0.1/udp/1234",
-            "/ip4/127.0.0.1/udp/0",
-            "/ip4/127.0.0.1/tcp/1234",
-            "/ip4/127.0.0.1/tcp/1234/",
-            "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
-            "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234"
-        ];
+        let cases = ["/ip4/1.2.3.4",
+                     "/ip4/0.0.0.0",
+                     "/ip6/::1",
+                     "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21",
+                     // "/onion/timaq4ygg2iegci7:1234"),
+                     // "/onion/timaq4ygg2iegci7:80/http"),
+                     "/udp/0",
+                     "/tcp/0",
+                     "/sctp/0",
+                     "/udp/1234",
+                     "/tcp/1234",
+                     "/sctp/1234",
+                     "/udp/65535",
+                     "/tcp/65535",
+                     "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
+                     "/udp/1234/sctp/1234",
+                     "/udp/1234/udt",
+                     "/udp/1234/utp",
+                     "/tcp/1234/http",
+                     "/tcp/1234/https",
+                     "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234",
+                     "/ip4/127.0.0.1/udp/1234",
+                     "/ip4/127.0.0.1/udp/0",
+                     "/ip4/127.0.0.1/tcp/1234",
+                     "/ip4/127.0.0.1/tcp/1234/",
+                     "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
+                     "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234"];
 
         for case in &cases {
             assert!(Multiaddr::from_string(case).is_ok());

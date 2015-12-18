@@ -58,7 +58,7 @@ impl ProtocolType {
             480 => Ok(HTTP),
             443 => Ok(HTTPS),
             444 => Ok(ONION),
-            _ => Err(format!("Protocol code '{}' not recognized", c))
+            _ => Err(format!("Protocol code '{}' not recognized", c)),
         }
     }
 
@@ -115,6 +115,9 @@ pub struct Protocol {
 impl Protocol {
     pub fn from_str(s: &str) -> Result<Protocol, ()> {
         let ty = try!(ProtocolType::from_str(s));
-        Ok(Protocol { ty: ty, size: ty.size() })
+        Ok(Protocol {
+            ty: ty,
+            size: ty.size(),
+        })
     }
 }
