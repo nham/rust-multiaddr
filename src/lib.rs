@@ -63,10 +63,11 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
             continue;
         }
 
-        // If we're still here, we are expecting an address.
+        // If we reach here, we are looking for an address
         if segs.len() == 0 {
-            return Err(ParseError::InvalidAddress(format!("Address not found for protocol {}",
-                                                          p.ty)));
+            return Err(ParseError::InvalidAddress(format!(
+                "Address not found for protocol {}",
+                p.ty)));
         }
 
         let bytes = try!(address_string_to_bytes(segs[0], &p)
