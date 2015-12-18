@@ -25,7 +25,7 @@ pub enum ProtocolSize {
 }
 
 impl ProtocolType {
-    fn from_str(s: &str) -> Result<ProtocolType, String> {
+    fn from_str(s: &str) -> Result<ProtocolType, ()> {
         match s {
             "ip4"   => Ok(IP4),
             "tcp"   => Ok(TCP),
@@ -39,7 +39,7 @@ impl ProtocolType {
             "http"  => Ok(HTTP),
             "https" => Ok(HTTPS),
             "onion" => Ok(ONION),
-            _ => Err(format!("Protocol '{}' not recognized", s))
+            _ => Err(()),
         }
     }
 
@@ -113,7 +113,7 @@ pub struct Protocol {
 }
 
 impl Protocol {
-    pub fn from_str(s: &str) -> Result<Protocol, String> {
+    pub fn from_str(s: &str) -> Result<Protocol, ()> {
         let ty = try!(ProtocolType::from_str(s));
         Ok(Protocol { ty: ty, size: ty.size() })
     }

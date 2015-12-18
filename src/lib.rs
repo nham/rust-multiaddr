@@ -19,7 +19,11 @@ pub struct Multiaddr {
     bytes: Vec<u8>
 }
 
-pub type ParseError = String;
+pub enum ParseError {
+    InvalidCode(String),
+    InvalidAddress(String),
+    Other(String),
+}
 
 impl Multiaddr {
     pub fn from_string(s: &str) -> Result<Multiaddr, ParseError> {
@@ -40,28 +44,33 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
     let segs_vec: Vec<_> = s.split('/').collect();
 
     if segs_vec[0] != "" {
-        return Err(format!("Multiaddr must begin with '/'"));
+        return Err(ParseError::Other(format!("Multiaddr must begin with '/'")));
     }
 
     let mut segs = &segs_vec[1..];
     let mut ma = Cursor::new(Vec::new());
 
     while segs.len() > 0 {
-        let p = try!(Protocol::from_str(segs[0]));
+        let p = try!(Protocol::from_str(segs[0]).map_err(|_| {
+            ParseError::InvalidCode(format!("Invalid protocol: {}", segs[0]))
+        }));
 
         segs = &segs[1..];
 
         if let ProtocolSize::Fixed(0) = p.size { continue }
 
+        // If we're still here, we are expecting an address.
         if segs.len() == 0 {
-            return Err(format!("Address not found for protocol {}", p.ty));
+            return Err(ParseError::InvalidAddress(format!(
+                "Address not found for protocol {}",
+                p.ty)));
         }
 
-        let bytes = try!(address_string_to_bytes(segs[0], &p));
-        try!(ma.write_unsigned_varint_32(p.ty.code())
-               .map_err(|e| format!("{}", e)));
-        try!(ma.write_all(&bytes[..])
-               .map_err(|e| format!("{}", e)));
+        let bytes = try!(address_string_to_bytes(segs[0], &p)
+                            .map_err(|e| ParseError::InvalidAddress(e)));
+        // I don't think these can fail?
+        ma.write_unsigned_varint_32(p.ty.code()).unwrap();
+        ma.write_all(&bytes[..]).unwrap();
 
         segs = &segs[1..];
     }
@@ -69,7 +78,7 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
     Ok(ma.into_inner())
 }
 
-fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseError> {
+fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String> {
     let mut v = Vec::new();
     match proto.ty {
         IP4 => {
@@ -83,7 +92,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
         }
         IP6 => {
             match Ipv6Addr::from_str(s) {
-                Err(_) => Err(format!("Error parsing ip6 address")),
+                Err(e) => Err(format!("Error parsing ip6 address: {}", e)),
                 Ok(ip) => {
                     // this seems ugly but I don't know how to do it better
                     for &seg in ip.segments().iter() {
@@ -98,8 +107,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
             // verify string is a valid Multihash and convert it to bytes
             let mut bytes = try!(Multihash::from_base58_str(s)).into_bytes();
             let mut cursor = Cursor::new(v);
-            try!(cursor.write_unsigned_varint_32(bytes.len() as u32)
-                       .map_err(|e| format!("Error: {}", e)));
+            cursor.write_unsigned_varint_32(bytes.len() as u32).unwrap();
             let mut v = cursor.into_inner();
             v.append(&mut bytes);
             Ok(v)
@@ -132,18 +140,29 @@ fn verify_multiaddr_bytes(mut bytes: &[u8]) -> Result<(), ParseError> {
      *   if variable length, read varint and then that number of bytes.
      */
     while bytes.len() > 0 {
-        let code = try!(bytes.read_unsigned_varint_32()
-                              .map_err(|e| format!("{}", e)));
-        let proto_type = try!(ProtocolType::from_code(code));
+        let code = try!(bytes.read_unsigned_varint_32().map_err(|e| {
+            ParseError::InvalidCode(format!("Error reading varint: {}",
+                                            e))
+        }));
+        let proto_type = try!(ProtocolType::from_code(code).map_err(|_| {
+            ParseError::InvalidCode(format!("Invalid protocol type code: {}",
+                                            code))
+        }));
         let addr_size = match proto_type.size() {
             ProtocolSize::Fixed(0) => continue,
             ProtocolSize::Fixed(n) => n,
-            ProtocolSize::Variable => try!(bytes.read_unsigned_varint_32()
-                                                .map_err(|e| format!("{}", e))),
+            ProtocolSize::Variable => try!(bytes.read_unsigned_varint_32().map_err(|e| {
+                ParseError::InvalidAddress(format!("Error reading varint: {}",
+                                                   e))
+            })),
         };
 
         if bytes.len() < addr_size as usize {
-            return Err(format!("Expected {} bytes, found {}", addr_size, bytes.len()));
+            return Err(ParseError::InvalidAddress(format!(
+                "Unexpected end of bytes, expected {} more, found {}",
+                addr_size,
+                bytes.len()
+            )));
         }
 
         bytes = &bytes[addr_size as usize..];
