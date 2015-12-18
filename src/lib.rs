@@ -21,37 +21,8 @@ pub type ParseError = String;
 
 impl Multiaddr {
     pub fn from_string(s: &str) -> Result<Multiaddr, ParseError> {
-        let s = s.trim_right_matches('/');
-        let segs_vec: Vec<_> = s.split('/').collect();
-
-        if segs_vec[0] != "" {
-            return Err("Multiaddr must begin with '/'".to_string());
-        }
-
-        let mut segs = &segs_vec[1..];
-        let mut ma = Cursor::new(Vec::new());
-
-        while segs.len() > 0 {
-            let p = try!(Protocol::from_str(segs[0]));
-
-            segs = &segs[1..];
-
-            if let ProtocolSize::Fixed(0) = p.size { continue }
-
-            if segs.len() == 0 {
-                return Err(format!("Address not found for protocol {}", p.ty));
-            }
-
-            let bytes = try!(address_string_to_bytes(segs[0], &p));
-            try!(ma.write_unsigned_varint_32(p.ty.code())
-                   .map_err(|e| format!("{}", e)));
-            try!(ma.write_all(&bytes[..])
-                   .map_err(|e| format!("{}", e)));
-
-            segs = &segs[1..];
-        }
-
-        Ok(Multiaddr { bytes: ma.into_inner() })
+        let bytes = try!(parse_str_to_bytes(s));
+        Ok(Multiaddr { bytes: bytes })
     }
 
     pub fn from_bytes(b: Vec<u8>) -> Result<Multiaddr, ParseError> {
@@ -60,6 +31,40 @@ impl Multiaddr {
     }
 
     pub fn as_bytes(&self) -> &[u8] { &self.bytes[..] }
+}
+
+fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
+    let s = s.trim_right_matches('/');
+    let segs_vec: Vec<_> = s.split('/').collect();
+
+    if segs_vec[0] != "" {
+        return Err(format!("Multiaddr must begin with '/'"));
+    }
+
+    let mut segs = &segs_vec[1..];
+    let mut ma = Cursor::new(Vec::new());
+
+    while segs.len() > 0 {
+        let p = try!(Protocol::from_str(segs[0]));
+
+        segs = &segs[1..];
+
+        if let ProtocolSize::Fixed(0) = p.size { continue }
+
+        if segs.len() == 0 {
+            return Err(format!("Address not found for protocol {}", p.ty));
+        }
+
+        let bytes = try!(address_string_to_bytes(segs[0], &p));
+        try!(ma.write_unsigned_varint_32(p.ty.code())
+               .map_err(|e| format!("{}", e)));
+        try!(ma.write_all(&bytes[..])
+               .map_err(|e| format!("{}", e)));
+
+        segs = &segs[1..];
+    }
+
+    Ok(ma.into_inner())
 }
 
 fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseError> {
@@ -154,64 +159,76 @@ mod test {
     #[test]
     fn test_fail_construct() {
         // Cases taken from go-multiaddr tests
-        assert!(Multiaddr::from_string("/ip4").is_err());
-        assert!(Multiaddr::from_string("/ip4").is_err());
-		assert!(Multiaddr::from_string("/ip4/::1").is_err());
-		assert!(Multiaddr::from_string("/ip4/fdpsofodsajfdoisa").is_err());
-		assert!(Multiaddr::from_string("/ip6").is_err());
-		assert!(Multiaddr::from_string("/udp").is_err());
-		assert!(Multiaddr::from_string("/tcp").is_err());
-		assert!(Multiaddr::from_string("/sctp").is_err());
-		assert!(Multiaddr::from_string("/udp/65536").is_err());
-		assert!(Multiaddr::from_string("/tcp/65536").is_err());
-        /*
-		assert!(Multiaddr::from_string("/onion/9imaq4ygg2iegci7:80").is_err());
-		assert!(Multiaddr::from_string("/onion/aaimaq4ygg2iegci7:80").is_err());
-		assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci7:0").is_err());
-		assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci7:-1").is_err());
-		assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci7").is_err());
-		assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci@:666").is_err());
-        */
-		assert!(Multiaddr::from_string("/udp/1234/sctp").is_err());
-		assert!(Multiaddr::from_string("/udp/1234/udt/1234").is_err());
-		assert!(Multiaddr::from_string("/udp/1234/utp/1234").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/udp/jfodsajfidosajfoidsa").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/udp").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/tcp/jfodsajfidosajfoidsa").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/tcp").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/ipfs").is_err());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/ipfs/tcp").is_err());
+        let cases = [
+            "/ip4",
+            "/ip4",
+            "/ip4/::1",
+            "/ip4/fdpsofodsajfdoisa",
+            "/ip6",
+            "/udp",
+            "/tcp",
+            "/sctp",
+            "/udp/65536",
+            "/tcp/65536",
+            /*
+            "/onion/9imaq4ygg2iegci7:80",
+            "/onion/aaimaq4ygg2iegci7:80",
+            "/onion/timaq4ygg2iegci7:0",
+            "/onion/timaq4ygg2iegci7:-1",
+            "/onion/timaq4ygg2iegci7",
+            "/onion/timaq4ygg2iegci@:666",
+            */
+            "/udp/1234/sctp",
+            "/udp/1234/udt/1234",
+            "/udp/1234/utp/1234",
+            "/ip4/127.0.0.1/udp/jfodsajfidosajfoidsa",
+            "/ip4/127.0.0.1/udp",
+            "/ip4/127.0.0.1/tcp/jfodsajfidosajfoidsa",
+            "/ip4/127.0.0.1/tcp",
+            "/ip4/127.0.0.1/ipfs",
+            "/ip4/127.0.0.1/ipfs/tcp"
+        ];
+
+        for case in &cases {
+            assert!(Multiaddr::from_string(case).is_err());
+        }
     }
 
     #[test]
     fn test_succeed_construct() {
         // Cases taken from go-multiaddr tests
-        assert!(Multiaddr::from_string("/ip4/1.2.3.4").is_ok());
-		assert!(Multiaddr::from_string("/ip4/0.0.0.0").is_ok());
-		assert!(Multiaddr::from_string("/ip6/::1").is_ok());
-		assert!(Multiaddr::from_string("/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21").is_ok());
-		//assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci7:1234").is_ok());
-		//assert!(Multiaddr::from_string("/onion/timaq4ygg2iegci7:80/http").is_ok());
-		assert!(Multiaddr::from_string("/udp/0").is_ok());
-		assert!(Multiaddr::from_string("/tcp/0").is_ok());
-		assert!(Multiaddr::from_string("/sctp/0").is_ok());
-		assert!(Multiaddr::from_string("/udp/1234").is_ok());
-		assert!(Multiaddr::from_string("/tcp/1234").is_ok());
-		assert!(Multiaddr::from_string("/sctp/1234").is_ok());
-		assert!(Multiaddr::from_string("/udp/65535").is_ok());
-		assert!(Multiaddr::from_string("/tcp/65535").is_ok());
-		assert!(Multiaddr::from_string("/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC").is_ok());
-		assert!(Multiaddr::from_string("/udp/1234/sctp/1234").is_ok());
-		assert!(Multiaddr::from_string("/udp/1234/udt").is_ok());
-		assert!(Multiaddr::from_string("/udp/1234/utp").is_ok());
-		assert!(Multiaddr::from_string("/tcp/1234/http").is_ok());
-		assert!(Multiaddr::from_string("/tcp/1234/https").is_ok());
-		assert!(Multiaddr::from_string("/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/udp/1234").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/udp/0").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/tcp/1234").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/tcp/1234/").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC").is_ok());
-		assert!(Multiaddr::from_string("/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234").is_ok());
+        let cases = [
+            "/ip4/1.2.3.4",
+            "/ip4/0.0.0.0",
+            "/ip6/::1",
+            "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21",
+            //"/onion/timaq4ygg2iegci7:1234"),
+            //"/onion/timaq4ygg2iegci7:80/http"),
+            "/udp/0",
+            "/tcp/0",
+            "/sctp/0",
+            "/udp/1234",
+            "/tcp/1234",
+            "/sctp/1234",
+            "/udp/65535",
+            "/tcp/65535",
+            "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
+            "/udp/1234/sctp/1234",
+            "/udp/1234/udt",
+            "/udp/1234/utp",
+            "/tcp/1234/http",
+            "/tcp/1234/https",
+            "/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234",
+            "/ip4/127.0.0.1/udp/1234",
+            "/ip4/127.0.0.1/udp/0",
+            "/ip4/127.0.0.1/tcp/1234",
+            "/ip4/127.0.0.1/tcp/1234/",
+            "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC",
+            "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234"
+        ];
+
+        for case in &cases {
+            assert!(Multiaddr::from_string(case).is_ok());
+        }
     }
 }
