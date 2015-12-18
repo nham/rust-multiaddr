@@ -1,6 +1,8 @@
+extern crate byteorder;
 extern crate rust_multihash;
 extern crate varint;
 
+use byteorder::{BigEndian, WriteBytesExt};
 use rust_multihash::Multihash;
 use std::io::{Cursor, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -72,7 +74,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
     match proto.ty {
         IP4 => {
             match Ipv4Addr::from_str(s) {
-                Err(_) => Err(format!("Error parsing ip4 address")),
+                Err(e) => Err(format!("Error parsing ip4 address: {}", e)),
                 Ok(ip) => {
                     v.extend(ip.octets().iter());
                     Ok(v)
@@ -85,7 +87,8 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
                 Ok(ip) => {
                     // this seems ugly but I don't know how to do it better
                     for &seg in ip.segments().iter() {
-                        v.extend(u16_to_u8s(seg).iter());
+                        try!(v.write_u16::<BigEndian>(seg)
+                             .map_err(|e| format!("Error writing ip6 bytes: {}", e)));
                     }
                     Ok(v)
                 }
@@ -105,7 +108,8 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, ParseEr
             match s.parse::<u16>() {
                 Err(e) => Err(format!("Error parsing tcp/udp/sctp/dccp port number: {}", e)),
                 Ok(port) => {
-                    v.extend(u16_to_u8s(port).iter());
+                    try!(v.write_u16::<BigEndian>(port)
+                          .map_err(|e| format!("Error writing port bytes: {}", e)));
                     Ok(v)
                 }
             }
@@ -145,10 +149,6 @@ fn verify_multiaddr_bytes(mut bytes: &[u8]) -> Result<(), ParseError> {
         bytes = &bytes[addr_size as usize..];
     }
     Ok(())
-}
-
-fn u16_to_u8s(x: u16) -> [u8; 2] {
-    [(x >> 8) as u8, x as u8]
 }
 
 

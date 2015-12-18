@@ -4,5 +4,6 @@ version = "0.0.1"
 authors = ["Nick Hamann <nick@wabbo.org>"]
 
 [dependencies]
+byteorder = "0.4"
 varint = { git = "https://github.com/nham/Varint-rs.git", branch = "add_impl" }
 rust-multihash = { git = "https://github.com/nham/rust-multihash.git" }
