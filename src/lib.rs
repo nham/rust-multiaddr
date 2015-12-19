@@ -27,6 +27,14 @@ impl PartialEq for Multiaddr {
 
 impl Eq for Multiaddr { }
 
+impl FromStr for Multiaddr {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let bytes = try!(parse_str_to_bytes(s));
+        Ok(Multiaddr { bytes: bytes })
+    }
+}
+
 #[derive(Debug)]
 pub enum ParseError {
     InvalidCode(String),
@@ -37,11 +45,6 @@ pub enum ParseError {
 pub type ParseResult<T> = Result<T, ParseError>;
 
 impl Multiaddr {
-    pub fn from_str(s: &str) -> ParseResult<Multiaddr> {
-        let bytes = try!(parse_str_to_bytes(s));
-        Ok(Multiaddr { bytes: bytes })
-    }
-
     pub fn from_bytes(b: Vec<u8>) -> ParseResult<Multiaddr> {
         try!(verify_multiaddr_bytes(&b[..]));
         Ok(Multiaddr { bytes: b })

@@ -1,5 +1,6 @@
 use std::convert::From;
 use std::fmt;
+use std::str::FromStr;
 
 use self::Protocol::*;
 
@@ -25,14 +26,9 @@ impl From<Protocol> for u16 {
     }
 }
 
-// Size of address in bits
-pub enum Size {
-    Fixed(u32),
-    Variable,
-}
-
-impl Protocol {
-    pub fn from_str(s: &str) -> Result<Protocol, ()> {
+impl FromStr for Protocol {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "ip4"   => Ok(IP4),
             "tcp"   => Ok(TCP),
@@ -49,7 +45,15 @@ impl Protocol {
             _ => Err(()),
         }
     }
+}
 
+// Size of address in bits
+pub enum Size {
+    Fixed(u32),
+    Variable,
+}
+
+impl Protocol {
     // bad duplication. not sure how to fix
     pub fn from_code(c: u16) -> Result<Protocol, ()> {
         match c {
