@@ -9,29 +9,40 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 use varint::{VarintWrite, VarintRead};
 
-use protocols::{Protocol, ProtocolSize, ProtocolType};
-use protocols::ProtocolType::*;
+use protocol::Protocol;
+use protocol::Protocol::*;
 
-mod protocols;
+mod protocol;
 
 #[derive(Debug)]
 pub struct Multiaddr {
     bytes: Vec<u8>,
 }
 
+impl PartialEq for Multiaddr {
+    fn eq(&self, other: &Multiaddr) -> bool {
+        self.bytes.iter().eq(other.bytes.iter())
+    }
+}
+
+impl Eq for Multiaddr { }
+
+#[derive(Debug)]
 pub enum ParseError {
     InvalidCode(String),
     InvalidAddress(String),
     Other(String),
 }
 
+pub type ParseResult<T> = Result<T, ParseError>;
+
 impl Multiaddr {
-    pub fn from_string(s: &str) -> Result<Multiaddr, ParseError> {
+    pub fn from_string(s: &str) -> ParseResult<Multiaddr> {
         let bytes = try!(parse_str_to_bytes(s));
         Ok(Multiaddr { bytes: bytes })
     }
 
-    pub fn from_bytes(b: Vec<u8>) -> Result<Multiaddr, ParseError> {
+    pub fn from_bytes(b: Vec<u8>) -> ParseResult<Multiaddr> {
         try!(verify_multiaddr_bytes(&b[..]));
         Ok(Multiaddr { bytes: b })
     }
@@ -41,11 +52,37 @@ impl Multiaddr {
     }
 }
 
-fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
+pub trait ToMultiaddr {
+    fn to_multiaddr(&self) -> ParseResult<Multiaddr>;
+}
+
+impl ToMultiaddr for Ipv4Addr {
+    fn to_multiaddr(&self) -> ParseResult<Multiaddr> {
+        let mut bytes = Cursor::new(Vec::new());
+        // TODO: write varint for the protocol type code of ip4.
+        bytes.write_unsigned_varint_32(u16::from(IP4) as u32).unwrap();
+        let mut bytes = bytes.into_inner();
+        write_ip4_to_vec(self, &mut bytes);
+        Multiaddr::from_bytes(bytes)
+    }
+}
+
+fn write_ip4_to_vec(ip: &Ipv4Addr, vec: &mut Vec<u8>) {
+    vec.extend(ip.octets().iter());
+}
+
+fn write_ip6_to_vec(ip: &Ipv6Addr, vec: &mut Vec<u8>) {
+    for &seg in ip.segments().iter() {
+        vec.write_u16::<BigEndian>(seg).unwrap()
+    }
+}
+
+fn parse_str_to_bytes(s: &str) -> ParseResult<Vec<u8>> {
     let s = s.trim_right_matches('/');
     let segs_vec: Vec<_> = s.split('/').collect();
 
     if segs_vec[0] != "" {
+        // TODO: should this become InvalidCode instead of Other?
         return Err(ParseError::Other(format!("Multiaddr must begin with '/'")));
     }
 
@@ -59,7 +96,7 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
 
         segs = &segs[1..];
 
-        if let ProtocolSize::Fixed(0) = p.size {
+        if let protocol::Size::Fixed(0) = p.size() {
             continue;
         }
 
@@ -67,13 +104,13 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
         if segs.len() == 0 {
             return Err(ParseError::InvalidAddress(format!(
                 "Address not found for protocol {}",
-                p.ty)));
+                p)));
         }
 
         let bytes = try!(address_string_to_bytes(segs[0], &p)
                              .map_err(|e| ParseError::InvalidAddress(e)));
         // I don't think these can fail?
-        ma.write_unsigned_varint_32(p.ty.code()).unwrap();
+        ma.write_unsigned_varint_32(u16::from(p) as u32).unwrap();
         ma.write_all(&bytes[..]).unwrap();
 
         segs = &segs[1..];
@@ -84,12 +121,12 @@ fn parse_str_to_bytes(s: &str) -> Result<Vec<u8>, ParseError> {
 
 fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String> {
     let mut v = Vec::new();
-    match proto.ty {
+    match *proto {
         IP4 => {
             match Ipv4Addr::from_str(s) {
                 Err(e) => Err(format!("Error parsing ip4 address: {}", e)),
                 Ok(ip) => {
-                    v.extend(ip.octets().iter());
+                    write_ip4_to_vec(&ip, &mut v);
                     Ok(v)
                 }
             }
@@ -98,11 +135,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String>
             match Ipv6Addr::from_str(s) {
                 Err(e) => Err(format!("Error parsing ip6 address: {}", e)),
                 Ok(ip) => {
-                    // this seems ugly but I don't know how to do it better
-                    for &seg in ip.segments().iter() {
-                        try!(v.write_u16::<BigEndian>(seg)
-                              .map_err(|e| format!("Error writing ip6 bytes: {}", e)));
-                    }
+                    write_ip6_to_vec(&ip, &mut v);
                     Ok(v)
                 }
             }
@@ -143,14 +176,14 @@ fn verify_multiaddr_bytes(mut bytes: &[u8]) -> Result<(), ParseError> {
     while bytes.len() > 0 {
         let code = try!(bytes.read_unsigned_varint_32().map_err(|e| {
             ParseError::InvalidCode(format!("Error reading varint: {}", e))
-        }));
-        let proto_type = try!(ProtocolType::from_code(code).map_err(|_| {
+        })) as u16;
+        let proto_type = try!(Protocol::from_code(code).map_err(|_| {
             ParseError::InvalidCode(format!("Invalid protocol type code: {}", code))
         }));
         let addr_size = match proto_type.size() {
-            ProtocolSize::Fixed(0) => continue,
-            ProtocolSize::Fixed(n) => n,
-            ProtocolSize::Variable => {
+            protocol::Size::Fixed(0) => continue,
+            protocol::Size::Fixed(n) => n,
+            protocol::Size::Variable => {
                 try!(bytes.read_unsigned_varint_32().map_err(|e| {
                     ParseError::InvalidAddress(format!("Error reading varint: {}", e))
                 }))
@@ -173,7 +206,9 @@ fn verify_multiaddr_bytes(mut bytes: &[u8]) -> Result<(), ParseError> {
 
 #[cfg(test)]
 mod test {
-    use super::Multiaddr;
+    use super::{Multiaddr, ToMultiaddr};
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::str::FromStr;
 
     #[test]
     fn test_fail_construct() {
@@ -244,5 +279,12 @@ mod test {
         for case in &cases {
             assert!(Multiaddr::from_string(case).is_ok());
         }
+    }
+
+    #[test]
+    fn test_ip4_tomultiaddr() {
+        let ip = Ipv4Addr::from_str("1.2.3.4").unwrap();
+        assert_eq!(ip.to_multiaddr().unwrap(),
+                   Multiaddr::from_string("/ip4/1.2.3.4").unwrap());
     }
 }

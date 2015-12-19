@@ -1,9 +1,10 @@
+use std::convert::From;
 use std::fmt;
 
-use self::ProtocolType::*;
+use self::Protocol::*;
 
 #[derive(Copy, Clone)]
-pub enum ProtocolType {
+pub enum Protocol {
     IP4 = 4,
     TCP = 6,
     UDP = 17,
@@ -18,14 +19,20 @@ pub enum ProtocolType {
     ONION = 444,
 }
 
+impl From<Protocol> for u16 {
+    fn from(p: Protocol) -> u16 {
+        p as u16
+    }
+}
+
 // Size of address in bits
-pub enum ProtocolSize {
+pub enum Size {
     Fixed(u32),
     Variable,
 }
 
-impl ProtocolType {
-    fn from_str(s: &str) -> Result<ProtocolType, ()> {
+impl Protocol {
+    pub fn from_str(s: &str) -> Result<Protocol, ()> {
         match s {
             "ip4"   => Ok(IP4),
             "tcp"   => Ok(TCP),
@@ -44,7 +51,7 @@ impl ProtocolType {
     }
 
     // bad duplication. not sure how to fix
-    pub fn from_code(c: u32) -> Result<ProtocolType, String> {
+    pub fn from_code(c: u16) -> Result<Protocol, ()> {
         match c {
             4   => Ok(IP4),
             6   => Ok(TCP),
@@ -58,11 +65,11 @@ impl ProtocolType {
             480 => Ok(HTTP),
             443 => Ok(HTTPS),
             444 => Ok(ONION),
-            _ => Err(format!("Protocol code '{}' not recognized", c)),
+            _ => Err(()),
         }
     }
 
-    fn to_str(&self) -> &'static str {
+    pub fn to_str(&self) -> &'static str {
         match *self {
             IP4 => "ip4",
             TCP => "tcp",
@@ -79,45 +86,26 @@ impl ProtocolType {
         }
     }
 
-    pub fn size(&self) -> ProtocolSize {
+    pub fn size(&self) -> Size {
         match *self {
-            IP4 => ProtocolSize::Fixed(4),
-            TCP => ProtocolSize::Fixed(2),
-            UDP => ProtocolSize::Fixed(2),
-            DCCP => ProtocolSize::Fixed(2),
-            IP6 => ProtocolSize::Fixed(16),
-            SCTP => ProtocolSize::Fixed(2),
-            UTP => ProtocolSize::Fixed(0),
-            UDT => ProtocolSize::Fixed(0),
-            IPFS => ProtocolSize::Variable,
-            HTTP => ProtocolSize::Fixed(0),
-            HTTPS => ProtocolSize::Fixed(0),
-            ONION => ProtocolSize::Fixed(10),
+            IP4 => Size::Fixed(4),
+            TCP => Size::Fixed(2),
+            UDP => Size::Fixed(2),
+            DCCP => Size::Fixed(2),
+            IP6 => Size::Fixed(16),
+            SCTP => Size::Fixed(2),
+            UTP => Size::Fixed(0),
+            UDT => Size::Fixed(0),
+            IPFS => Size::Variable,
+            HTTP => Size::Fixed(0),
+            HTTPS => Size::Fixed(0),
+            ONION => Size::Fixed(10),
         }
     }
-
-    pub fn code(&self) -> u32 {
-        *self as u32
-    }
 }
 
-impl fmt::Display for ProtocolType {
+impl fmt::Display for Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}", self.to_str())
-    }
-}
-
-pub struct Protocol {
-    pub ty: ProtocolType,
-    pub size: ProtocolSize,
-}
-
-impl Protocol {
-    pub fn from_str(s: &str) -> Result<Protocol, ()> {
-        let ty = try!(ProtocolType::from_str(s));
-        Ok(Protocol {
-            ty: ty,
-            size: ty.size(),
-        })
     }
 }
