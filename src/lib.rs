@@ -37,7 +37,7 @@ pub enum ParseError {
 pub type ParseResult<T> = Result<T, ParseError>;
 
 impl Multiaddr {
-    pub fn from_string(s: &str) -> ParseResult<Multiaddr> {
+    pub fn from_str(s: &str) -> ParseResult<Multiaddr> {
         let bytes = try!(parse_str_to_bytes(s));
         Ok(Multiaddr { bytes: bytes })
     }
@@ -251,7 +251,7 @@ mod test {
                      "/ip4/127.0.0.1/ipfs/tcp"];
 
         for case in &cases {
-            assert!(Multiaddr::from_string(case).is_err());
+            assert!(Multiaddr::from_str(case).is_err());
         }
     }
 
@@ -287,7 +287,7 @@ mod test {
                      "/ip4/127.0.0.1/ipfs/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC/tcp/1234"];
 
         for case in &cases {
-            assert!(Multiaddr::from_string(case).is_ok());
+            assert!(Multiaddr::from_str(case).is_ok());
         }
     }
 
@@ -295,7 +295,7 @@ mod test {
     fn test_ip4_tomultiaddr() {
         let ip = Ipv4Addr::from_str("1.2.3.4").unwrap();
         assert_eq!(ip.to_multiaddr().unwrap(),
-                   Multiaddr::from_string("/ip4/1.2.3.4").unwrap());
+                   Multiaddr::from_str("/ip4/1.2.3.4").unwrap());
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod test {
         for addr in &addrs {
             let ip = Ipv6Addr::from_str(&addr[5..]).unwrap();
             assert_eq!(ip.to_multiaddr().unwrap(),
-                       Multiaddr::from_string(addr).unwrap());
+                       Multiaddr::from_str(addr).unwrap());
         }
     }
 }
