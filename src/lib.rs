@@ -56,13 +56,24 @@ pub trait ToMultiaddr {
     fn to_multiaddr(&self) -> ParseResult<Multiaddr>;
 }
 
+fn write_protocol(proto: Protocol, buf: &mut Vec<u8>) {
+    buf.write_unsigned_varint_32(u16::from(proto) as u32).unwrap();
+}
+
 impl ToMultiaddr for Ipv4Addr {
     fn to_multiaddr(&self) -> ParseResult<Multiaddr> {
-        let mut bytes = Cursor::new(Vec::new());
-        // TODO: write varint for the protocol type code of ip4.
-        bytes.write_unsigned_varint_32(u16::from(IP4) as u32).unwrap();
-        let mut bytes = bytes.into_inner();
+        let mut bytes = Vec::new();
+        write_protocol(IP4, &mut bytes);
         write_ip4_to_vec(self, &mut bytes);
+        Multiaddr::from_bytes(bytes)
+    }
+}
+
+impl ToMultiaddr for Ipv6Addr {
+    fn to_multiaddr(&self) -> ParseResult<Multiaddr> {
+        let mut bytes = Vec::new();
+        write_protocol(IP6, &mut bytes);
+        write_ip6_to_vec(self, &mut bytes);
         Multiaddr::from_bytes(bytes)
     }
 }
@@ -153,8 +164,7 @@ fn address_string_to_bytes(s: &str, proto: &Protocol) -> Result<Vec<u8>, String>
             match s.parse::<u16>() {
                 Err(e) => Err(format!("Error parsing tcp/udp/sctp/dccp port number: {}", e)),
                 Ok(port) => {
-                    try!(v.write_u16::<BigEndian>(port)
-                          .map_err(|e| format!("Error writing port bytes: {}", e)));
+                    v.write_u16::<BigEndian>(port).unwrap();
                     Ok(v)
                 }
             }
@@ -286,5 +296,19 @@ mod test {
         let ip = Ipv4Addr::from_str("1.2.3.4").unwrap();
         assert_eq!(ip.to_multiaddr().unwrap(),
                    Multiaddr::from_string("/ip4/1.2.3.4").unwrap());
+    }
+
+    #[test]
+    fn test_ip6_tomultiaddr() {
+        let addrs = [
+            "/ip6/2601:9:4f81:9700:803e:ca65:66e8:c21",
+            "/ip6/::1"
+        ];
+
+        for addr in &addrs {
+            let ip = Ipv6Addr::from_str(&addr[5..]).unwrap();
+            assert_eq!(ip.to_multiaddr().unwrap(),
+                       Multiaddr::from_string(addr).unwrap());
+        }
     }
 }
